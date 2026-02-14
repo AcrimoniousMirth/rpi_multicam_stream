@@ -253,7 +253,13 @@ class StreamingHandler(BaseHTTPRequestHandler):
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Threaded HTTP server for handling multiple simultaneous connections"""
     allow_reuse_address = True
-    daemon_threads = True
+    daemon_threads = False  # Changed to False - threads must stay alive!
+    
+    def server_bind(self):
+        """Override to add SO_REUSEADDR and verify binding"""
+        import socket
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        HTTPServer.server_bind(self)
 
 
 class CameraServer:
@@ -272,13 +278,19 @@ class CameraServer:
             handler = type('Handler', (StreamingHandler,), {'camera': self.camera})
             
             self.server = ThreadedHTTPServer(('0.0.0.0', self.camera.port), handler)
+            
+            # Verify server socket is actually bound
+            sock_name = self.server.socket.getsockname()
+            self.logger.info(f"Server socket bound to {sock_name}")
+            
             self.thread = threading.Thread(
                 target=self._serve_forever_wrapper,
-                daemon=False  # Changed to False so server stays alive
+                daemon=False,  # Must be False
+                name=f"HTTPServer-{self.camera.name}"
             )
             self.thread.start()
             
-            # Wait a moment and verify server is actually running
+            # Wait and verify thread is alive
             time.sleep(0.5)
             if not self.thread.is_alive():
                 raise RuntimeError("Server thread died immediately after start")
@@ -293,6 +305,7 @@ class CameraServer:
             raise
         except Exception as e:
             self.logger.error(f"Failed to start HTTP server: {e}")
+            traceback.print_exc()
             raise
     
     def _serve_forever_wrapper(self):
