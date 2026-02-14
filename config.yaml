@@ -1,0 +1,30 @@
+# USB Webcam Streamer Configuration
+# Configure your USB cameras here
+
+cameras:
+  # Camera 1
+  - name: "camera_1"
+    device: "/dev/video0"
+    port: 8081
+    resolution:
+      width: 1920
+      height: 1080
+    framerate: 30
+    rotation: 0  # Degrees: 0, 90, 180, 270
+    quality: 80  # JPEG quality (1-100)
+    
+  # Camera 2
+  - name: "camera_2"
+    device: "/dev/video2"
+    port: 8082
+    resolution:
+      width: 1280
+      height: 720
+    framerate: 30
+    rotation: 0
+    quality: 80
+
+# Optional: Global settings
+settings:
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_file: "/var/log/webcam-streamer.log"
