@@ -40,6 +40,7 @@ class CameraStream:
             '-input_format', 'mjpeg',  # Try MJPEG first for USB cameras
             '-video_size', f'{self.width}x{self.height}',
             '-framerate', str(self.fps),
+            '-thread_queue_size', '512',  # Increase buffer for stability
             '-i', self.device,
         ]
         
@@ -57,6 +58,7 @@ class CameraStream:
             '-c:v', 'mjpeg',
             '-q:v', str(100 - self.quality),  # ffmpeg quality is inverse (lower = better)
             '-f', 'mpjpeg',
+            '-bufsize', '2M',  # Output buffer size
             'pipe:1'
         ])
         
@@ -76,7 +78,7 @@ class CameraStream:
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,  # Suppress ffmpeg verbose output
                 bufsize=10**8
             )
             
