@@ -1,1 +1,12 @@
+# Python Dependencies
+# Note: These are installed via apt (system packages) by install.sh
+# to avoid issues with externally-managed Python environments.
+#
+# Installation command in install.sh:
+# sudo apt-get install -y python3-yaml
+#
+# If you need to install manually:
+# - Debian/Ubuntu/Raspberry Pi OS: sudo apt install python3-yaml
+# - Or use a virtual environment: python3 -m venv venv && source venv/bin/activate && pip install PyYAML
+
 PyYAML>=6.0

@@ -72,9 +72,8 @@ fi
 # Make scripts executable
 chmod +x "${INSTALL_DIR}/main.py"
 
-# Install Python dependencies
-echo -e "${GREEN}Installing Python dependencies...${NC}"
-pip3 install -r "${INSTALL_DIR}/requirements.txt" --user
+# Note: Python dependencies (PyYAML) are already installed via apt above
+# No need for pip install, which would fail on externally-managed environments
 
 # Setup systemd service
 echo -e "${GREEN}Setting up systemd service...${NC}"
