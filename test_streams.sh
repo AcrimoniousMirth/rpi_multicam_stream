@@ -1,68 +1,77 @@
 #!/bin/bash
 
-# Quick stream test - downloads a few frames to check if they're valid
+# Simple stream viewer test
+# Downloads a frame and displays info
 
-echo "Testing Camera Streams"
-echo "======================"
+echo "Stream Viewer Test"
+echo "=================="
 echo ""
 
-# Test cam 1
-echo "Testing Camera 1 (port 8081)..."
-timeout 3 curl -s http://localhost:8081/stream > /tmp/cam1_test.mjpg 2>&1
-if [ $? -eq 124 ]; then
-    # Timeout is expected for streaming
-    size=$(stat -f%z /tmp/cam1_test.mjpg 2>/dev/null || stat -c%s /tmp/cam1_test.mjpg 2>/dev/null)
-    if [ "$size" -gt 1000 ]; then
-        echo "  ✓ Camera 1 is streaming (received ${size} bytes)"
-        # Check if it looks like JPEG data
-        if head -c 2 /tmp/cam1_test.mjpg | xxd | grep -q "ffd8"; then
-            echo "  ✓ Data starts with JPEG marker (FF D8)"
+test_stream() {
+    port=$1
+    name=$2
+    
+    echo "Testing $name (port $port)..."
+    
+    # Get a few frames
+    timeout 2 curl -s http://localhost:$port/stream 2>/dev/null > /tmp/stream_$port.mjpg
+    
+    size=$(stat -c%s /tmp/stream_$port.mjpg 2>/dev/null || stat -f%z /tmp/stream_$port.mjpg 2>/dev/null)
+    
+    if [ "$size" -gt 10000 ]; then
+        echo "  ✓ Received ${size} bytes"
+        
+        # Check for JPEG boundary
+        if grep -q "jpgboundary" /tmp/stream_$port.mjpg; then
+            echo "  ✓ Found multipart boundary"
         else
-            echo "  ✗ Data does NOT start with JPEG marker!"
-            echo "  First 32 bytes:"
-            head -c 32 /tmp/cam1_test.mjpg | xxd
+            echo "  ✗ No multipart boundary found"
+        fi
+        
+        # Check for JPEG markers
+        jpeg_count=$(grep -abo $'\xFF\xD8' /tmp/stream_$port.mjpg | wc -l)
+        echo "  ✓ Found $jpeg_count JPEG frames"
+        
+        # Extract first frame
+        # Find first JPEG start
+        start=$(grep -abo $'\xFF\xD8' /tmp/stream_$port.mjpg | head -1 | cut -d: -f1)
+        # Find first JPEG end after start
+        end=$(grep -abo $'\xFF\xD9' /tmp/stream_$port.mjpg | head -1 | cut -d: -f1)
+        
+        if [ -n "$start" ] && [ -n "$end" ] && [ "$end" -gt "$start" ]; then
+            frame_size=$((end - start + 2))
+            echo "  ✓ First frame size: ${frame_size} bytes"
+            
+            # Extract and save first frame
+            dd if=/tmp/stream_$port.mjpg of=/tmp/frame_$port.jpg bs=1 skip=$start count=$frame_size 2>/dev/null
+            
+            # Verify it's valid JPEG
+            if file /tmp/frame_$port.jpg | grep -q "JPEG"; then
+                echo "  ✓ Frame is valid JPEG"
+            else
+                echo "  ✗ Frame is NOT valid JPEG"
+                echo "    First 16 bytes:"
+                xxd -l 16 /tmp/frame_$port.jpg
+            fi
+        else
+            echo "  ✗ Could not find complete JPEG frame"
         fi
     else
-        echo "  ✗ Camera 1 received very little data (${size} bytes)"
-    fi
-else
-    echo "  ✗ Camera 1 failed to connect"
-fi
-echo ""
-
-# Test cam 2
-echo "Testing Camera 2 (port 8082)..."
-timeout 3 curl -s http://localhost:8082/stream > /tmp/cam2_test.mjpg 2>&1
-if [ $? -eq 124 ]; then
-    size=$(stat -f%z /tmp/cam2_test.mjpg 2>/dev/null || stat -c%s /tmp/cam2_test.mjpg 2>/dev/null)
-    if [ "$size" -gt 1000 ]; then
-        echo "  ✓ Camera 2 is streaming (received ${size} bytes)"
-        if head -c 2 /tmp/cam2_test.mjpg | xxd | grep -q "ffd8"; then
-            echo "  ✓ Data starts with JPEG marker (FF D8)"
-        else
-            echo "  ✗ Data does NOT start with JPEG marker!"
-            echo "  First 32 bytes:"
-            head -c 32 /tmp/cam2_test.mjpg | xxd
+        echo "  ✗ Received only ${size} bytes (too small)"
+        if [ "$size" -gt 0 ]; then
+            echo "  Content:"
+            head -c 200 /tmp/stream_$port.mjpg
         fi
-    else
-        echo "  ✗ Camera 2 received very little data (${size} bytes)"
     fi
-else
-    echo "  ✗ Camera 2 failed to connect"
-    # Try to see if port is even listening
-    if curl -s http://localhost:8082/ > /dev/null 2>&1; then
-        echo "  Port 8082 is responding but /stream path may be broken"
-    else
-        echo "  Port 8082 is not responding at all"
-    fi
-fi
-echo ""
+    echo ""
+}
 
-# Check for errors in logs
-echo "Recent errors:"
-sudo journalctl -u webcam-streamer --since "2 minutes ago" | grep -i "error\|exception\|traceback" | tail -10
-echo ""
+test_stream 8081 "Camera 1"
+test_stream 8082 "Camera 2"
 
-# Check process status
-echo "Process info:"
-./check_server_status.sh 2>/dev/null | head -30
+echo "To view frames:"
+echo "  Camera 1: /tmp/frame_8081.jpg"
+echo "  Camera 2: /tmp/frame_8082.jpg"
+echo ""
+echo "Copy to your computer with:"
+echo "  scp manta@192.168.0.243:/tmp/frame_*.jpg ."
