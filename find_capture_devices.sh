@@ -10,12 +10,15 @@ for dev in /dev/video*[0-9]; do
     # Skip if not a character device
     [ -c "$dev" ] || continue
     
-    # Try to list formats - if this works, it's a capture device
+    # Try to list formats
     formats_output=$(v4l2-ctl --device=$dev --list-formats 2>&1)
     
-    # Check if it errored (metadata devices will fail)
-    if echo "$formats_output" | grep -q "ioctl.*VIDIOC_ENUM_FMT"; then
-        echo "✗ $dev - NOT a capture device (metadata/other)"
+    # Extract format names (e.g. 'MJPG', 'YUYV')
+    formats=$(echo "$formats_output" | grep -oP "'\K[A-Z0-9]+(?=')" | paste -sd "," -)
+    
+    # Check if we actually found any formats
+    if [ -z "$formats" ]; then
+        echo "✗ $dev - NOT a capture device (metadata/other - no formats found)"
         echo ""
         continue
     fi
@@ -26,18 +29,13 @@ for dev in /dev/video*[0-9]; do
     # Get camera name
     name=$(v4l2-ctl --device=$dev --info 2>/dev/null | grep "Card type" | cut -d':' -f2 | xargs)
     echo "  Name: $name"
+    echo "  Formats: $formats"
     
-    # Check formats
-    formats=$(echo "$formats_output" | grep -oP "'\K[A-Z0-9]+(?=')" | paste -sd "," -)
-    if [ -n "$formats" ]; then
-        echo "  Formats: $formats"
-        
-        # Check if MJPEG is supported
-        if echo "$formats" | grep -q "MJPEG"; then
-            echo "  ✓ Supports MJPEG"
-        else
-            echo "  ✗ No MJPEG support"
-        fi
+    # Check if MJPEG is supported
+    if echo "$formats" | grep -q "MJPG"; then
+        echo "  ✓ Supports MJPEG"
+    else
+        echo "  ✗ No MJPEG support"
     fi
     echo ""
 done
