@@ -79,14 +79,40 @@ class CameraStream:
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,  # Suppress ffmpeg verbose output
+                stderr=subprocess.PIPE,  # Capture stderr for error detection
                 bufsize=10**8
             )
             
+            # CRITICAL: Check if process actually started
+            time.sleep(0.5)
+            poll_result = self.process.poll()
+            
+            if poll_result is not None:
+                # Process died immediately - read error
+                stderr_output = self.process.stderr.read().decode('utf-8', errors='ignore')
+                self.logger.error(f"ffmpeg died immediately (exit code {poll_result})")
+                self.logger.error(f"stderr: {stderr_output[-1000:]}")
+                raise RuntimeError(f"ffmpeg failed to start")
+            
+            # Test frame reading
             self.running = True
-            self.logger.info(f"Camera started successfully on port {self.port}")
+            test_frame = None
+            for attempt in range(10):
+                test_frame = self.read_frame()
+                if test_frame:
+                    break
+                time.sleep(0.1)
+            
+            if not test_frame:
+                self.logger.warning("ffmpeg started but no frames yet - may be slow camera")
+            else:
+                self.logger.info(f"Camera started successfully on port {self.port}")
             
         except Exception as e:
+            self.running = False
+            if self.process:
+                self.process.kill()
+                self.process = None
             self.logger.error(f"Failed to start camera: {e}")
             raise
     
