@@ -51,12 +51,15 @@ capture_devices=()
 for dev in /dev/video*[0-9]; do
     [ -c "$dev" ] || continue
     formats_output=$(v4l2-ctl --device=$dev --list-formats 2>&1)
-    # Skip if it's a metadata device (ioctl error)
-    if echo "$formats_output" | grep -q "ioctl.*VIDIOC_ENUM_FMT"; then
+    formats=$(echo "$formats_output" | grep -oP "'\K[A-Z0-9]+(?=')" | paste -sd "," -)
+    
+    # Skip if no formats found
+    if [ -z "$formats" ]; then
         continue
     fi
-    # Check if it supports MJPEG
-    if echo "$formats_output" | grep -q "MJPEG"; then
+    
+    # Check if it supports MJPEG (MJPG in v4l2-ctl)
+    if echo "$formats" | grep -q "MJPG"; then
         capture_devices+=("$dev")
     fi
 done
