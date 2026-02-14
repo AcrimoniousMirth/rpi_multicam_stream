@@ -13,6 +13,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
+import select
 
 class CameraStream:
     """Manages a single camera stream using ffmpeg"""
@@ -30,18 +31,22 @@ class CameraStream:
         self.process = None
         self.running = False
         self.logger = logging.getLogger(f"Camera-{self.name}")
-        self.error_count = 0  # Track errors to reduce log spam
+        self.error_count = 0
+        self.consecutive_empty_reads = 0
+        self.last_frame_time = 0
         
     def build_ffmpeg_command(self):
         """Build ffmpeg command for camera capture and streaming"""
         # Base command with v4l2 input
         cmd = [
             'ffmpeg',
+            '-hide_banner',
+            '-loglevel', 'error',
+            '-thread_queue_size', '1024',  # Higher queue for stability
             '-f', 'v4l2',
-            '-input_format', 'mjpeg',  # Try MJPEG first for USB cameras
+            '-input_format', 'mjpeg',
             '-video_size', f'{self.width}x{self.height}',
             '-framerate', str(self.fps),
-            '-thread_queue_size', '512',  # Increase buffer for stability
             '-i', self.device,
         ]
         
@@ -57,9 +62,9 @@ class CameraStream:
         # Output to stdout as MJPEG
         cmd.extend([
             '-c:v', 'mjpeg',
-            '-q:v', str(100 - self.quality),  # ffmpeg quality is inverse (lower = better)
+            '-q:v', str(max(1, 31 - int(self.quality * 0.31))), # Map 1-100 to 31-1
             '-f', 'mpjpeg',
-            '-bufsize', '2M',  # Output buffer size
+            '-bufsize', '4M',  # Larger buffer for high res
             'pipe:1'
         ])
         
@@ -79,12 +84,12 @@ class CameraStream:
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,  # Capture stderr for error detection
+                stderr=subprocess.PIPE,
                 bufsize=10**8
             )
             
             # CRITICAL: Check if process actually started
-            time.sleep(0.5)
+            time.sleep(1.0)
             poll_result = self.process.poll()
             
             if poll_result is not None:
@@ -94,17 +99,19 @@ class CameraStream:
                 self.logger.error(f"stderr: {stderr_output[-1000:]}")
                 raise RuntimeError(f"ffmpeg failed to start")
             
-            # Test frame reading
             self.running = True
+            self.last_frame_time = time.time()
+            
+            # Test frame reading
             test_frame = None
-            for attempt in range(10):
+            for attempt in range(20):
                 test_frame = self.read_frame()
                 if test_frame:
                     break
                 time.sleep(0.1)
             
             if not test_frame:
-                self.logger.warning("ffmpeg started but no frames yet - may be slow camera")
+                self.logger.warning("ffmpeg started but no frames yet - may be slow camera or low bandwidth")
             else:
                 self.logger.info(f"Camera started successfully on port {self.port}")
             
@@ -136,51 +143,56 @@ class CameraStream:
         self.logger.info("Camera stopped")
     
     def read_frame(self):
-        """Read a single JPEG frame from ffmpeg multipart JPEG output"""
+        """Read a single MJPEG frame with timeout to prevent freezing"""
         if not self.running or not self.process:
             return None
         
         try:
-            # Read multipart boundary (text line)
+            # Check if data is available with 1.0 second timeout
+            ready, _, _ = select.select([self.process.stdout], [], [], 1.0)
+            if not ready:
+                self.consecutive_empty_reads += 1
+                if self.consecutive_empty_reads % 10 == 0:
+                    self.logger.warning(f"No frame data from ffmpeg for {self.consecutive_empty_reads} seconds")
+                return None
+            
+            self.consecutive_empty_reads = 0
+            
+            # Read multipart boundary
             while True:
                 line = self.process.stdout.readline()
                 if not line:
                     return None
-                # Boundary starts with --
                 if line.startswith(b'--'):
                     break
             
-            # Read headers (text lines) until we hit blank line
+            # Read headers until blank line
             content_length = None
             while True:
                 line = self.process.stdout.readline()
                 if not line:
                     return None
-                    
-                # Blank line signals end of headers
                 if line in (b'\r\n', b'\n'):
                     break
-                
-                # Parse Content-Length header
                 if line.lower().startswith(b'content-length:'):
                     try:
                         content_length = int(line.split(b':', 1)[1].strip())
                     except (ValueError, IndexError):
                         pass
             
-            # Read the binary JPEG data
+            # Read binary JPEG data
             if content_length and content_length > 0:
                 jpeg_data = self.process.stdout.read(content_length)
                 if len(jpeg_data) == content_length:
+                    self.last_frame_time = time.time()
                     return jpeg_data
             
             return None
             
         except Exception as e:
             self.error_count += 1
-            # Only log every 100th error to prevent spam
             if self.error_count % 100 == 1:
-                self.logger.error(f"Error reading frame (count: {self.error_count}): {e}")
+                self.logger.error(f"Error reading frame: {e}")
             return None
 
 
