@@ -11,10 +11,16 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Configuration
-INSTALL_DIR="/home/pi/webcam-streamer"
+# Configuration - use current user's home directory
+CURRENT_USER="${USER}"
+INSTALL_DIR="${HOME}/webcam-streamer"
 SERVICE_NAME="webcam-streamer.service"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
+
+# Allow override via environment variable
+if [ -n "${WEBCAM_INSTALL_DIR}" ]; then
+    INSTALL_DIR="${WEBCAM_INSTALL_DIR}"
+fi
 
 echo -e "${GREEN}USB Webcam Streamer - Installation${NC}"
 echo "=================================="
@@ -73,8 +79,10 @@ pip3 install -r "${INSTALL_DIR}/requirements.txt" --user
 # Setup systemd service
 echo -e "${GREEN}Setting up systemd service...${NC}"
 
-# Update service file with correct paths
-sed "s|/home/pi/webcam-streamer|${INSTALL_DIR}|g" webcam-streamer.service > /tmp/${SERVICE_NAME}
+# Update service file with correct paths and user
+sed -e "s|/home/pi/webcam-streamer|${INSTALL_DIR}|g" \
+    -e "s|User=pi|User=${CURRENT_USER}|g" \
+    webcam-streamer.service > /tmp/${SERVICE_NAME}
 
 # Copy service file
 sudo cp /tmp/${SERVICE_NAME} "${SERVICE_FILE}"

@@ -10,10 +10,15 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Configuration
-INSTALL_DIR="/home/pi/webcam-streamer"
+# Configuration - use current user's home directory
+INSTALL_DIR="${HOME}/webcam-streamer"
 SERVICE_NAME="webcam-streamer.service"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}"
+
+# Allow override via environment variable
+if [ -n "${WEBCAM_INSTALL_DIR}" ]; then
+    INSTALL_DIR="${WEBCAM_INSTALL_DIR}"
+fi
 
 echo -e "${YELLOW}USB Webcam Streamer - Uninstallation${NC}"
 echo "===================================="
