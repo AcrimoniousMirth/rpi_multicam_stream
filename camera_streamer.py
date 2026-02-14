@@ -29,6 +29,7 @@ class CameraStream:
         self.process = None
         self.running = False
         self.logger = logging.getLogger(f"Camera-{self.name}")
+        self.error_count = 0  # Track errors to reduce log spam
         
     def build_ffmpeg_command(self):
         """Build ffmpeg command for camera capture and streaming"""
@@ -106,37 +107,44 @@ class CameraStream:
         self.logger.info("Camera stopped")
     
     def read_frame(self):
-        """Read a single MJPEG frame from ffmpeg output"""
+        """Read a single JPEG frame from ffmpeg MJPEG output"""
         if not self.running or not self.process:
             return None
         
         try:
-            # Read MJPEG boundary
+            # Find JPEG start marker (0xFF 0xD8)
             while True:
-                line = self.process.stdout.readline()
-                if not line:
+                byte = self.process.stdout.read(1)
+                if not byte:
                     return None
-                if b'--' in line:  # MJPEG boundary marker
-                    break
+                if byte == b'\xff':
+                    next_byte = self.process.stdout.read(1)
+                    if next_byte == b'\xd8':
+                        # Found JPEG start
+                        jpeg_data = b'\xff\xd8'
+                        break
             
-            # Read headers
-            headers = {}
+            # Read until JPEG end marker (0xFF 0xD9)
             while True:
-                line = self.process.stdout.readline()
-                if line == b'\r\n' or line == b'\n':
-                    break
-                if b':' in line:
-                    key, value = line.decode().strip().split(':', 1)
-                    headers[key.strip()] = value.strip()
-            
-            # Read frame data
-            content_length = int(headers.get('Content-Length', 0))
-            if content_length > 0:
-                frame_data = self.process.stdout.read(content_length)
-                return frame_data
+                byte = self.process.stdout.read(1)
+                if not byte:
+                    return None
+                jpeg_data += byte
+                
+                # Check for end marker
+                if len(jpeg_data) >= 2 and jpeg_data[-2:] == b'\xff\xd9':
+                    return jpeg_data
+                
+                # Safety check: max frame size ~5MB
+                if len(jpeg_data) > 5 * 1024 * 1024:
+                    self.logger.warning("Frame too large, skipping")
+                    return None
             
         except Exception as e:
-            self.logger.error(f"Error reading frame: {e}")
+            self.error_count += 1
+            # Only log every 100th error to prevent spam
+            if self.error_count % 100 == 1:
+                self.logger.error(f"Error reading frame (count: {self.error_count}): {e}")
             return None
 
 
