@@ -1,0 +1,20 @@
+# Example udev rules for persistent webcam device names
+# Copy this to /etc/udev/rules.d/99-webcam-persistent.rules
+
+# The KERNELS value should match your camera's USB port location
+# Find it by running: ./identify_cameras.sh
+
+# Example 1: Camera on USB port 1-1.2 -> /dev/video-cam1
+SUBSYSTEM=="video4linux", KERNELS=="1-1.2", ATTR{index}=="0", SYMLINK+="video-cam1"
+
+# Example 2: Camera on USB port 1-1.3 -> /dev/video-cam2
+SUBSYSTEM=="video4linux", KERNELS=="1-1.3", ATTR{index}=="0", SYMLINK+="video-cam2"
+
+# Example 3: Using USB bus path (alternative format)
+# SUBSYSTEM=="video4linux", ATTRS{busnum}=="1", ATTRS{devpath}=="1.2", ATTR{index}=="0", SYMLINK+="video-front"
+
+# After editing this file:
+# 1. Copy to /etc/udev/rules.d/: sudo cp 99-webcam-persistent.rules /etc/udev/rules.d/
+# 2. Reload rules: sudo udevadm control --reload-rules
+# 3. Trigger: sudo udevadm trigger
+# 4. Verify: ls -l /dev/video-*
