@@ -23,7 +23,8 @@ echo "  ✓ Created backup: ${CONFIG_FILE}.bak"
 # Lower Camera 1 (Nozzle0)
 sed -i 's/width: 1920/width: 1280/g' "$CONFIG_FILE"
 sed -i 's/height: 1080/height: 720/g' "$CONFIG_FILE"
-sed -i 's/framerate: 30/framerate: 15/g' "$CONFIG_FILE"
+sed -i 's/framerate: 30/framerate: 10/g' "$CONFIG_FILE"
+sed -i 's/framerate: 15/framerate: 10/g' "$CONFIG_FILE"
 
 # Lower Camera 2 (Nozzle1) - assuming it might already be lower but ensuring it
 # (The sed above will hit both if they are both 1920x1080)
