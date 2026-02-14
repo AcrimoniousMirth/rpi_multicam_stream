@@ -10,6 +10,7 @@ A lightweight multi-camera MJPEG streaming application designed for Raspberry Pi
 - 🪶 **Lightweight** - Uses ffmpeg for efficient video processing
 - 🌐 **Web Interface** - Simple HTML viewer for each camera stream
 - 📝 **Comprehensive Logging** - Configurable logging levels and file output
+- 👤 **Multi-User Support** - Works with any user account, not just 'pi'
 
 ## Requirements
 
@@ -19,27 +20,23 @@ A lightweight multi-camera MJPEG streaming application designed for Raspberry Pi
 - Network connection
 
 ### Software
-- Raspberry Pi OS (Raspbian)
+- Raspberry Pi OS (Raspbian) or any Linux distribution
 - Python 3.7+
 - ffmpeg
-- systemd (included in Raspberry Pi OS)
+- systemd (included in most Linux distributions)
 
 ## Installation
 
-1. **Transfer files to your Raspberry Pi:**
+### Quick Install
+
+1. **Clone the repository:**
    ```bash
-   # On your computer, from this directory:
-   scp -r * pi@<your-pi-ip>:~/webcam-streamer/
+   git clone https://github.com/AcrimoniousMirth/rpi_multicam_stream.git
+   cd rpi_multicam_stream
    ```
 
-2. **SSH into your Raspberry Pi:**
+2. **Run the installation script:**
    ```bash
-   ssh pi@<your-pi-ip>
-   ```
-
-3. **Run the installation script:**
-   ```bash
-   cd ~/webcam-streamer
    chmod +x install.sh
    ./install.sh
    ```
@@ -47,13 +44,22 @@ A lightweight multi-camera MJPEG streaming application designed for Raspberry Pi
 The installation script will:
 - Install required system packages (ffmpeg, python3)
 - Install Python dependencies
-- Set up the systemd service
+- Install files to `$HOME/webcam-streamer`
+- Set up the systemd service for your user
 - Enable auto-start at boot
 - Start the service
 
+### Custom Installation Directory
+
+To install to a custom directory:
+```bash
+export WEBCAM_INSTALL_DIR="/path/to/your/directory"
+./install.sh
+```
+
 ## Configuration
 
-Edit the `config.yaml` file to configure your cameras:
+Edit the `config.yaml` file in your installation directory to configure your cameras:
 
 ```yaml
 cameras:
@@ -107,12 +113,12 @@ sudo systemctl restart webcam-streamer
 
 Once installed and running, access your camera streams via a web browser:
 
-- **Camera 1**: `http://<raspberry-pi-ip>:8081/`
-- **Camera 2**: `http://<raspberry-pi-ip>:8082/`
+- **Camera 1**: `http://<your-ip>:8081/`
+- **Camera 2**: `http://<your-ip>:8082/`
 
 For direct MJPEG stream (e.g., for VLC or another application):
-- **Camera 1**: `http://<raspberry-pi-ip>:8081/stream`
-- **Camera 2**: `http://<raspberry-pi-ip>:8082/stream`
+- **Camera 1**: `http://<your-ip>:8081/stream`
+- **Camera 2**: `http://<your-ip>:8082/stream`
 
 ### Service Management
 
@@ -141,6 +147,23 @@ sudo systemctl enable webcam-streamer
 
 ## Troubleshooting
 
+### Permission Denied Error
+
+If you get "Permission denied" errors during installation:
+
+1. **Make sure you're NOT running as root:**
+   ```bash
+   # Run as your regular user, NOT with sudo
+   ./install.sh
+   ```
+   The script will ask for sudo password when needed.
+
+2. **If your home directory doesn't exist**, create it or use a custom directory:
+   ```bash
+   export WEBCAM_INSTALL_DIR="/opt/webcam-streamer"
+   ./install.sh
+   ```
+
 ### Camera Not Found
 
 If a camera isn't detected:
@@ -152,9 +175,9 @@ If a camera isn't detected:
 
 2. Check camera permissions:
    ```bash
-   sudo usermod -a -G video pi
+   sudo usermod -a -G video $USER
    ```
-   Then reboot.
+   Then log out and log back in (or reboot).
 
 3. Try a different USB port or hub
 
@@ -212,7 +235,7 @@ Edit `camera_streamer.py` and change the input format:
 ### Running Manually (for testing)
 
 ```bash
-cd /home/pi/webcam-streamer
+cd ~/webcam-streamer
 python3 main.py config.yaml
 ```
 
@@ -235,18 +258,33 @@ Use the MJPEG stream URL in any application that supports MJPEG:
 To remove the webcam streamer:
 
 ```bash
-cd ~/webcam-streamer
-chmod +x uninstall.sh
+cd ~/rpi_multicam_stream  # or wherever you cloned the repo
 ./uninstall.sh
 ```
+
+## Files Overview
+
+- `camera_streamer.py` - Core streaming engine using ffmpeg
+- `main.py` - Application entry point
+- `config.yaml` - Camera configuration file
+- `requirements.txt` - Python dependencies
+- `install.sh` - Installation script
+- `uninstall.sh` - Uninstallation script
+- `setup.sh` - Quick setup helper
+- `webcam-streamer.service` - Systemd service template
 
 ## License
 
 This project is provided as-is for personal and educational use.
 
+## Contributing
+
+Issues and pull requests welcome at https://github.com/AcrimoniousMirth/rpi_multicam_stream
+
 ## Support
 
 For issues or questions:
 1. Check the logs: `sudo journalctl -u webcam-streamer -f`
-2. Verify configuration: `cat /home/pi/webcam-streamer/config.yaml`
+2. Verify configuration: `cat ~/webcam-streamer/config.yaml`
 3. Test camera: `ffmpeg -f v4l2 -list_formats all -i /dev/video0`
+4. Open an issue on GitHub
