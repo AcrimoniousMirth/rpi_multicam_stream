@@ -9,6 +9,7 @@ import threading
 import logging
 import signal
 import time
+import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
@@ -271,19 +272,43 @@ class CameraServer:
             handler = type('Handler', (StreamingHandler,), {'camera': self.camera})
             
             self.server = ThreadedHTTPServer(('0.0.0.0', self.camera.port), handler)
-            self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+            self.thread = threading.Thread(
+                target=self._serve_forever_wrapper,
+                daemon=False  # Changed to False so server stays alive
+            )
             self.thread.start()
+            
+            # Wait a moment and verify server is actually running
+            time.sleep(0.5)
+            if not self.thread.is_alive():
+                raise RuntimeError("Server thread died immediately after start")
             
             self.logger.info(f"HTTP server started on port {self.camera.port}")
             
+        except OSError as e:
+            if e.errno == 98:
+                self.logger.error(f"Port {self.camera.port} is already in use")
+            else:
+                self.logger.error(f"Failed to start HTTP server: {e}")
+            raise
         except Exception as e:
             self.logger.error(f"Failed to start HTTP server: {e}")
             raise
+    
+    def _serve_forever_wrapper(self):
+        """Wrapper for serve_forever with error handling"""
+        try:
+            self.server.serve_forever()
+        except Exception as e:
+            self.logger.error(f"Server crashed: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
     
     def stop(self):
         """Stop the HTTP server"""
         if self.server:
             self.logger.info("Stopping HTTP server")
             self.server.shutdown()
-            self.thread.join(timeout=5)
+            if self.thread:
+                self.thread.join(timeout=5)
             self.logger.info("HTTP server stopped")
