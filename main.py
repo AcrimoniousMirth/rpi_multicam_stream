@@ -106,43 +106,74 @@ class WebcamStreamerApp:
             self.logger.info("Starting USB Webcam Streamer")
             self.logger.info(f"Loading configuration from {self.config_path}")
             
+            # Track successful starts
+            successful_cameras = []
+            failed_cameras = []
+            
             # Validate and create cameras
             for idx, cam_config in enumerate(config['cameras']):
+                camera_name = cam_config.get('name', f'camera_{idx}')
                 try:
                     self.validate_camera_config(cam_config)
                     
                     # Create camera stream
                     camera = CameraStream(cam_config)
                     camera.start()
-                    self.cameras.append(camera)
                     
                     # Create HTTP server
                     server = CameraServer(camera)
                     server.start()
+                    
+                    # Only add to lists if both succeeded
+                    self.cameras.append(camera)
                     self.servers.append(server)
+                    successful_cameras.append(camera_name)
                     
                     self.logger.info(
                         f"Camera '{cam_config['name']}' streaming on "
                         f"http://0.0.0.0:{cam_config['port']}/stream"
                     )
                     
+                except OSError as e:
+                    if e.errno == 98:  # Address already in use
+                        self.logger.error(
+                            f"Failed to start '{camera_name}': Port {cam_config['port']} is already in use. "
+                            f"Check with 'sudo lsof -i :{cam_config['port']}'"
+                        )
+                    else:
+                        self.logger.error(f"Failed to start '{camera_name}': {e}")
+                    failed_cameras.append(camera_name)
+                    
                 except Exception as e:
-                    self.logger.error(f"Failed to start camera {idx}: {e}")
-                    # Continue with other cameras
+                    self.logger.error(f"Failed to start '{camera_name}': {e}")
+                    failed_cameras.append(camera_name)
             
             if not self.cameras:
                 self.logger.error("No cameras started successfully")
+                if failed_cameras:
+                    self.logger.error(f"Failed cameras: {', '.join(failed_cameras)}")
                 return False
             
             self.running = True
-            self.logger.info(f"Successfully started {len(self.cameras)} camera(s)")
+            
+            # Report results
+            if failed_cameras:
+                self.logger.warning(
+                    f"Started {len(successful_cameras)}/{len(config['cameras'])} camera(s). "
+                    f"Failed: {', '.join(failed_cameras)}"
+                )
+            else:
+                self.logger.info(f"Successfully started all {len(self.cameras)} camera(s)")
             
             # Print access information
             print("\n" + "="*60)
             print("USB Webcam Streamer - Running")
             print("="*60)
             for camera in self.cameras:
-                print(f"  {camera.name}: http://<raspberry-pi-ip>:{camera.port}/stream")
+                print(f"  {camera.name}: http://<your-ip>:{camera.port}/stream")
+            if failed_cameras:
+                print(f"\nFailed cameras: {', '.join(failed_cameras)}")
+                print("Check logs with: sudo journalctl -u webcam-streamer -n 50")
             print("="*60 + "\n")
             
             return True
